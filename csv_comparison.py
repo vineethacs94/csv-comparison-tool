@@ -13,7 +13,7 @@ class CSVComparator:
         Args:
             old_file: Path to old CSV file
             new_file: Path to new CSV file
-            primary_key: Primary key column name(s) for comparison
+            primary_key: Primary key column name(s) for comparison (can be list for composite keys)
             output_file: Path to output CSV file (optional)
         """
         self.old_file = old_file
@@ -56,9 +56,11 @@ class CSVComparator:
         for pk in self.primary_key:
             if pk not in self.old_df.columns:
                 print(f"[ERROR] Primary key '{pk}' not found in old file")
+                print(f"Available columns: {list(self.old_df.columns)}")
                 sys.exit(1)
             if pk not in self.new_df.columns:
                 print(f"[ERROR] Primary key '{pk}' not found in new file")
+                print(f"Available columns: {list(self.new_df.columns)}")
                 sys.exit(1)
         
         self.print_progress(f"✓ Primary keys validated: {self.primary_key}")
@@ -72,19 +74,23 @@ class CSVComparator:
         new_df = self.new_df.copy()
         
         for pk in self.primary_key:
-            old_df[pk] = old_df[pk].astype(str)
-            new_df[pk] = new_df[pk].astype(str)
+            old_df[pk] = old_df[pk].astype(str).str.strip()
+            new_df[pk] = new_df[pk].astype(str).str.strip()
         
-        # Create composite key if multiple primary keys
+        # Create composite key from multiple primary keys
         if len(self.primary_key) > 1:
-            old_df['_composite_key'] = old_df[self.primary_key].apply(lambda x: '|'.join(x), axis=1)
-            new_df['_composite_key'] = new_df[self.primary_key].apply(lambda x: '|'.join(x), axis=1)
+            old_df['_composite_key'] = old_df[self.primary_key].apply(lambda x: '||'.join(x), axis=1)
+            new_df['_composite_key'] = new_df[self.primary_key].apply(lambda x: '||'.join(x), axis=1)
             key_col = '_composite_key'
+            self.print_progress(f"Using composite key: {' + '.join(self.primary_key)}")
         else:
             key_col = self.primary_key[0]
         
         old_keys = set(old_df[key_col])
         new_keys = set(new_df[key_col])
+        
+        self.print_progress(f"Old file unique keys: {len(old_keys)}")
+        self.print_progress(f"New file unique keys: {len(new_keys)}")
         
         # 1. Find DELETED records (in old but not in new)
         deleted_keys = old_keys - new_keys
@@ -191,11 +197,12 @@ class CSVComparator:
     
     def print_summary(self):
         """Print summary statistics to terminal"""
-        print("\n" + "="*60)
+        print("\n" + "="*70)
         print("COMPARISON SUMMARY")
-        print("="*60)
+        print("="*70)
         print(f"Old file: {self.old_file} ({len(self.old_df)} records)")
         print(f"New file: {self.new_file} ({len(self.new_df)} records)")
+        print(f"Primary Keys: {', '.join(self.primary_key)}")
         print(f"\nChanges found:")
         print(f"  • Added:   {len(self.changes['added'])}")
         print(f"  • Updated: {len(self.changes['updated'])}")
@@ -203,16 +210,19 @@ class CSVComparator:
         total_changes = len(self.changes['added']) + len(self.changes['updated']) + len(self.changes['deleted'])
         print(f"  • TOTAL:   {total_changes}")
         print(f"\nOutput file: {self.output_file}")
-        print("="*60 + "\n")
+        print("="*70 + "\n")
 
 
 def main():
     """Main function to run CSV comparison"""
     
-    # Configuration
+    # Configuration - UPDATE THESE PATHS
     old_csv = "old_data.csv"
     new_csv = "new_data.csv"
-    primary_key = "Id"  # Primary key column name
+    
+    # PRIMARY KEYS - Using Account_vod__r.Id and Id (Address ID)
+    primary_key = ["Account_vod__r.Id", "Id"]
+    
     output_csv = "incremental_changes.csv"
     
     # Create comparator
